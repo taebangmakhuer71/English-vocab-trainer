@@ -2,12 +2,11 @@ import streamlit as st
 import random
 import speech_recognition as sr
 import base64
-from streamlit.components.v1 import html
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, AudioProcessorBase  # <<< เพิ่ม Import webrtc
+from streamlit.components.v1 import html  # <<< สำหรับฝังโค้ด JavaScript
 
 
 # ==============================================================================
-# 1. ฟังก์ชันการทำงานเกี่ยวกับเสียง (TTS และ SR Processor)
+# 1. ฟังก์ชันการทำงานเกี่ยวกับเสียง (TTS)
 # ==============================================================================
 
 # ฟังก์ชัน JavaScript TTS (อ่านออกเสียง)
@@ -29,46 +28,6 @@ def play_text_to_speech(text):
 def speak(text):
     st.info(f"ระบบพูด: {text}")
     play_text_to_speech(text)
-
-
-# ฟังก์ชันถอดรหัสเสียง (Logic เดิม)
-def process_speech(audio_data):
-    """ใช้ speech_recognition ถอดรหัสเสียงที่ได้รับจากไมโครโฟน"""
-    try:
-        r = sr.Recognizer()
-        # ใช้ recognize_google ในการถอดรหัสเสียง
-        spoken_word = r.recognize_google(audio_data, language="en-US")
-
-        current = st.session_state.current_word.lower()
-        if spoken_word.lower() == current:
-            st.session_state.result_text = "✅ ถูกต้อง! เก่งมาก"
-            st.session_state.score += 1
-        else:
-            st.session_state.result_text = f"❌ ไม่ถูก ลองใหม่นะ (คุณพูดว่า: {spoken_word})"
-
-        speak("Result checked.")  # พูดผลลัพธ์
-        st.session_state.is_listening = False
-        st.rerun()
-
-    except sr.UnknownValueError:
-        st.session_state.result_text = "❌ ไม่ชัด ฟังไม่รู้เรื่อง ลองพูดอีกครั้ง"
-    except sr.RequestError:
-        st.session_state.result_text = "❌ เกิดข้อผิดพลาดในการเชื่อมต่อบริการถอดรหัสเสียง"
-    except Exception as e:
-        st.session_state.result_text = f"❌ Error: {e}"
-
-
-# Processor สำหรับ WebRTC (จำเป็นต้องมีเพื่อดักจับ Audio Chunk)
-class AudioProcessor(AudioProcessorBase):
-    def __init__(self):
-        # ใช้เพื่อบันทึก Audio data ที่กำลังเข้ามา
-        self.audio_chunks = []
-        self.recognizer = sr.Recognizer()
-
-    def recv(self, frame):
-        # รับข้อมูลเสียงจากไมโครโฟนของผู้ใช้
-        self.audio_chunks.append(frame)
-        return frame
 
 
 # ==============================================================================
@@ -97,8 +56,6 @@ if 'result_text' not in st.session_state:
     st.session_state.result_text = ""
 if 'is_listening' not in st.session_state:
     st.session_state.is_listening = False
-if 'webrtc_state' not in st.session_state:
-    st.session_state.webrtc_state = None
 
 
 # ฟังก์ชันสุ่มคำศัพท์ใหม่
@@ -117,27 +74,60 @@ def restart_game():
     next_word()
 
 
+# ฟังก์ชันตรวจสอบคำศัพท์ (ใช้การพิมพ์แทนไมค์)
+def recognize_speech_web(user_input):
+    if not user_input:
+        st.session_state.result_text = "กรุณาพิมพ์คำศัพท์ที่ได้ยิน"
+        return
+
+    spoken_word = user_input.lower().strip()
+    current = st.session_state.current_word.lower()
+
+    if spoken_word == current:
+        st.session_state.result_text = "✅ ถูกต้อง! เก่งมาก"
+        speak("Correct! Great job!")
+        st.session_state.score += 1
+    else:
+        st.session_state.result_text = f"❌ ไม่ถูก ลองใหม่นะ (คุณพิมพ์ว่า: {spoken_word})"
+        speak("That's not correct. Try again.")
+
+    st.session_state.is_listening = False
+
+
 # ==============================================================================
-# 3. สร้าง Streamlit UI (พร้อม WebRTC)
+# 3. สร้าง Streamlit UI (พร้อม CSS และ Layout)
 # ==============================================================================
 
 st.set_page_config(page_title="ฝึกพูดคำศัพท์", layout="centered")
 
-# โค้ด CSS สำหรับรูปภาพพื้นหลังและ Style ต่างๆ (เหมือนเดิม)
+# โค้ด CSS สำหรับรูปภาพพื้นหลังและ Style ต่างๆ
 try:
     with open('main.png', 'rb') as f:
         img_data = base64.b64encode(f.read()).decode()
 except FileNotFoundError:
     img_data = ""
 
-# ... (โค้ด CSS สไตล์ต่างๆ เหมือนเดิม) ...
 st.markdown(
     f"""
     <style>
-    .stApp {{ background-image: url("data:image/png;base64,{img_data}"); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed; color: #3333cc;}}
+    .stApp {{
+        background-image: url("data:image/png;base64,{img_data}");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        color: #3333cc;
+    }}
+    /* สไตล์อื่นๆ */
     h1, h2, h3, h4, h5, h6 {{color: #004080; text-align: center;}}
-    .stButton>button {{ background-color: #80dfff; color: black; border-radius: 5px; border: 1px solid #80dfff; font-size: 16px; padding: 10px 20px; margin: 5px 0; }}
-    .stTextInput>div>div>input {{ border-radius: 5px; border: 1px solid #b3e6ff; background-color: white; color: black; padding: 10px; }}
+    .stButton>button {{
+        background-color: #80dfff; color: black; border-radius: 5px; border: 1px solid #80dfff;
+        font-size: 16px; padding: 10px 20px; margin: 5px 0;
+    }}
+    .stTextInput>div>div>input {{
+        border-radius: 5px; border: 1px solid #b3e6ff; background-color: white;
+        color: black; padding: 10px;
+    }}
     .stAlert {{border-radius: 5px; text-align: center;}}
     </style>
     """,
@@ -151,6 +141,13 @@ st.markdown(
     f"<h2 style='text-align: center; font-size: 40px; color: #3333cc;'>**{st.session_state.current_word.upper()}**</h2>",
     unsafe_allow_html=True)
 
+# ปุ่ม "เริ่มพูด"
+speak_col = st.columns([1, 2, 1])
+with speak_col[1]:
+    # ปุ่มนี้จะเปลี่ยนโหมดให้แสดงช่องพิมพ์ข้อความ
+    if st.button("🎤 พูดคำศัพท์ (กดแล้วพิมพ์คำที่ได้ยิน)", key="speak_main", use_container_width=True):
+        st.session_state.is_listening = True
+
 # ปุ่มควบคุมเกม
 col1, col2 = st.columns(2)
 with col1:
@@ -162,57 +159,18 @@ with col2:
         restart_game()
         st.rerun()
 
-# -------------------------------------------------------------
-# ส่วนฝึกพูด (ใช้ไมโครโฟน WebRTC)
-# -------------------------------------------------------------
+# ส่วนฝึกพูด (การพิมพ์แทนไมค์)
 st.markdown("---")
-st.subheader("🎤 ส่วนฝึกพูด (พูดคำศัพท์):")
+st.subheader("ส่วนฝึกพูด (พิมพ์คำที่คุณพูด):")
 
-# ปุ่ม 'เริ่มพูด' จะทำหน้าที่สลับโหมด
 if st.session_state.is_listening:
-    # ใช้วิธี webrtc_streamer ในโหมด audio-only
-    webrtc_ctx = webrtc_streamer(
-        key="speech_input",
-        mode=WebRtcMode.SENDONLY,
-        audio_processor_factory=AudioProcessor,  # ใช้ AudioProcessor ที่เราสร้าง
-        media_stream_constraints={"video": False, "audio": True},
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
+    user_input = st.text_input("พิมพ์คำศัพท์ที่คุณคิดว่าได้ยิน:", key="speech_input")
 
-    st.session_state.webrtc_state = webrtc_ctx
-    st.info("⚠️ คลิกปุ่ม Start (สีเขียว) เพื่อเริ่มพูด เมื่อพูดเสร็จแล้วให้กด Stop (สีแดง)")
-
-    # ตรวจสอบว่าผู้ใช้หยุด Stream หรือยัง
-    if webrtc_ctx.state.playing == False and webrtc_ctx.audio_processor:
-        audio_processor = webrtc_ctx.audio_processor
-
-        # แปลง Audio Chunk ที่บันทึกไว้ให้เป็น Audio Data Format
-        if audio_processor.audio_chunks:
-            st.warning("กำลังประมวลผลเสียง... (อาจใช้เวลาสักครู่)")
-            try:
-                # รวม Audio Chunks เป็นไฟล์ WAV
-                audio_data = audio_processor.recognizer.AudioData(
-                    b"".join([chunk.to_bytes() for chunk in audio_processor.audio_chunks]),
-                    sample_rate=audio_processor.recognizer.SAMPLE_RATE,
-                    sample_width=audio_processor.recognizer.SAMPLE_WIDTH
-                )
-                # เรียกใช้ฟังก์ชันตรวจสอบคำศัพท์
-                process_speech(audio_data)
-
-            except Exception as e:
-                st.session_state.result_text = f"❌ เกิดข้อผิดพลาดในการรวบรวมไฟล์เสียง: {e}"
-                st.session_state.is_listening = False
-                st.rerun()
-        else:
-            # กรณีผู้ใช้กด Stop ทันทีโดยไม่มีเสียง
-            st.session_state.is_listening = False
-            st.session_state.result_text = "❌ ไม่พบเสียงพูด"
-            st.rerun()
-
+    if st.button("ตรวจสอบคำพูด", key="check_speech", use_container_width=True):
+        recognize_speech_web(user_input)
+        st.rerun()
 else:
-    # ปุ่ม 'เริ่มพูด' จะทำหน้าที่สลับโหมด (ย้ายไปอยู่ด้านบนแล้ว)
     pass
-# -------------------------------------------------------------
 
 # แสดงผลลัพธ์
 if st.session_state.result_text and not st.session_state.result_text.startswith("ระบบพูด:"):
